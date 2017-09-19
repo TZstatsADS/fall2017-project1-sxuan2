@@ -1,0 +1,324 @@
+---
+title: "project_1"
+author: "Sijian Xuan sx2195"
+date: "September 15, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Step 0: check and install needed packages. Load the libraries and functions. 
+
+```{r, message=FALSE, warning=FALSE}
+
+packages.used=c("rvest", "tibble", "qdap", 
+                "sentimentr", "gplots", "dplyr",
+                "tm", "syuzhet", "factoextra", 
+                "beeswarm", "scales", "RColorBrewer",
+                "RANN", "tm", "topicmodels", "tm", "wordcloud", "RColorBrewer", 
+                "dplyr", "tidytext")
+
+# check packages that need to be installed.
+packages.needed=setdiff(packages.used, 
+                        intersect(installed.packages()[,1], 
+                                  packages.used))
+# install additional packages
+if(length(packages.needed)>0){
+  install.packages(packages.needed, dependencies = TRUE)
+}
+
+# load packages
+library("rvest")
+library("tibble")
+library("qdap")
+library("sentimentr")
+library("gplots")
+library("dplyr")
+library("tm")
+library("syuzhet")
+library("factoextra")
+library("beeswarm")
+library("scales")
+library("RColorBrewer")
+library("RANN")
+library("tm")
+library("topicmodels")
+
+library(wordcloud)
+library(RColorBrewer)
+library(tidytext)
+
+source("/Users/xuansijian/Desktop/wk2-TextMining/lib/plotstacked.R")
+source("/Users/xuansijian/Desktop/wk2-TextMining/lib/speechFuncs.R")
+```
+This notebook was prepared with the following environmental settings.
+
+```{r}
+print(R.version)
+```
+# Step 1 - Read in the speeches
+```{r, warning=FALSE}
+folder.path="/Users/xuansijian/Documents/GitHub/fall2017-project1-sxuan2/data/InauguralSpeeches"
+speeches=list.files(path = folder.path, pattern = "*.txt")
+speech.list=read.csv("/Users/xuansijian/Documents/GitHub/fall2017-project1-sxuan2/data/InaugurationInfo.csv")
+
+speech.list$fulltext=NA
+text = NULL
+for(i in 1:length(speeches)){
+  text[i] = readLines(speeches[i])
+}
+speech.list = speech.list[order(speech.list$President),]
+rownames(speech.list)= 1:58
+speech.list$fulltext <- text
+
+
+sentence.list=NULL
+for(i in 1:nrow(speech.list)){
+  sentences=sent_detect(speech.list$fulltext[i],
+                        endmarks = c("?", ".", "!", "|",";"))
+  if(length(sentences)>0){
+    word.count=word_count(sentences)
+    # colnames(emotions)=paste0("emo.", colnames(emotions))
+    # in case the word counts are zeros?
+    sentence.list=rbind(sentence.list, 
+                        cbind(speech.list[i,-ncol(speech.list)],
+                              sentences=as.character(sentences), 
+                              word.count,
+                              sent.id=1:length(sentences)
+                              )
+    )
+  }
+}
+```
+#Step 2 - create Republican and Democracy vectors
+```{r}
+Republican_sentence.list = sentence.list[sentence.list$Party == "Republican",]
+Democracy_sentence.list = sentence.list[sentence.list$Party == "Democratic",]
+Republican_sentence.list = na.exclude(Republican_sentence.list)
+Democracy_sentence.list = na.exclude(Democracy_sentence.list)
+```
+#Step 3 - create corpus for Republican, text mining, and text processing
+```{r}
+repub_corpus.list=Republican_sentence.list[2:(nrow(Republican_sentence.list)-1), ]
+sentence.pre=Republican_sentence.list$sentences[1:(nrow(Republican_sentence.list)-2)]
+sentence.post=Republican_sentence.list$sentences[3:(nrow(Republican_sentence.list)-1)]
+repub_corpus.list$snipets=paste(sentence.pre, repub_corpus.list$sentences, sentence.post, sep=" ")
+rm.rows=(1:nrow(repub_corpus.list))[repub_corpus.list$sent.id==1]
+rm.rows=c(rm.rows, rm.rows-1)
+repub_corpus.list=repub_corpus.list[-rm.rows, ]
+
+repub_docs <- Corpus(VectorSource(repub_corpus.list$snipets))
+writeLines(as.character(repub_docs[[sample(1:nrow(repub_corpus.list), 1)]]))
+
+
+#remove potentially problematic symbols
+repub_docs <-tm_map(repub_docs,content_transformer(tolower))
+writeLines(as.character(repub_docs[[sample(1:nrow(repub_corpus.list), 1)]]))
+
+#remove punctuation
+repub_docs <- tm_map(repub_docs, removePunctuation)
+writeLines(as.character(repub_docs[[sample(1:nrow(repub_corpus.list), 1)]]))
+
+#Strip digits
+repub_docs <- tm_map(repub_docs, removeNumbers)
+writeLines(as.character(repub_docs[[sample(1:nrow(repub_corpus.list), 1)]]))
+
+#remove stopwords
+repub_docs <- tm_map(repub_docs, removeWords, stopwords("english"))
+writeLines(as.character(repub_docs[[sample(1:nrow(repub_corpus.list), 1)]]))
+
+#remove whitespace
+repub_docs <- tm_map(repub_docs, stripWhitespace)
+writeLines(as.character(repub_docs[[sample(1:nrow(repub_corpus.list), 1)]]))
+
+#Stem document
+repub_docs <- tm_map(repub_docs,stemDocument)
+writeLines(as.character(repub_docs[[sample(1:nrow(repub_corpus.list), 1)]]))
+```
+#Step 4 - topic modelling for Republican corpus
+Gengerate document-term matrices. 
+
+```{r}
+dtm <- DocumentTermMatrix(repub_docs)
+#convert rownames to filenames#convert rownames to filenames
+rownames(dtm) <- paste(repub_corpus.list$type, repub_corpus.list$File,
+                       repub_corpus.list$Term, repub_corpus.list$sent.id, sep="_")
+
+rowTotals <- apply(dtm , 1, sum) #Find the sum of words in each Document
+
+dtm  <- dtm[rowTotals> 0, ]
+repub_corpus.list=repub_corpus.list[rowTotals>0, ]
+
+```
+
+Run LDA
+
+```{r}
+#Set parameters for Gibbs sampling
+burnin <- 4000
+iter <- 2000
+thin <- 500
+seed <-list(2003,5,63,100001,765)
+nstart <- 5
+best <- TRUE
+
+#Number of topics
+k <- 5
+
+#Run LDA using Gibbs sampling
+ldaOut <-LDA(dtm, k, method="Gibbs", control=list(nstart = nstart, 
+                                                 seed = seed, best = best,
+                                                 burnin = burnin, iter = iter, 
+                                                 thin=thin))
+#write out results
+#docs to topics
+ldaOut.topics <- as.matrix(topics(ldaOut))
+table(c(1:k, ldaOut.topics))
+write.csv(ldaOut.topics,file=paste("/Users/xuansijian/LDAGibbs","REP",k,"DocsToTopics.csv"))
+
+#top 6 terms in each topic
+ldaOut.terms <- as.matrix(terms(ldaOut,20))
+write.csv(ldaOut.terms,file=paste("/Users/xuansijian/LDAGibbs","REP",k,"TopicsToTerms.csv"))
+
+#probabilities associated with each topic assignment
+topicProbabilities <- as.data.frame(ldaOut@gamma)
+write.csv(topicProbabilities,file=paste("/Users/xuansijian/LDAGibbs","REP",k,"TopicProbabilities.csv"))
+
+
+terms.beta=ldaOut@beta
+terms.beta=scale(terms.beta)
+topics.terms=NULL
+for(i in 1:k){
+  topics.terms=rbind(topics.terms, ldaOut@terms[order(terms.beta[i,], decreasing = TRUE)[1:7]])
+}
+topics.terms
+ldaOut.terms
+```
+#Step 5 - create corpus for Democratic, text mining, and text processing
+```{r}
+demo_corpus.list=Democracy_sentence.list[2:(nrow(Democracy_sentence.list)-1), ]
+sentence.pre=Democracy_sentence.list$sentences[1:(nrow(Democracy_sentence.list)-2)]
+sentence.post=Democracy_sentence.list$sentences[3:(nrow(Democracy_sentence.list)-1)]
+demo_corpus.list$snipets=paste(sentence.pre, demo_corpus.list$sentences, sentence.post, sep=" ")
+rm.rows=(1:nrow(demo_corpus.list))[demo_corpus.list$sent.id==1]
+rm.rows=c(rm.rows, rm.rows-1)
+demo_corpus.list=demo_corpus.list[-rm.rows, ]
+
+demo_docs <- Corpus(VectorSource(demo_corpus.list$snipets))
+writeLines(as.character(demo_docs[[sample(1:nrow(demo_corpus.list), 1)]]))
+
+
+#remove potentially problematic symbols
+demo_docs <-tm_map(demo_docs,content_transformer(tolower))
+writeLines(as.character(demo_docs[[sample(1:nrow(demo_corpus.list), 1)]]))
+
+#remove punctuation
+demo_docs <- tm_map(demo_docs, removePunctuation)
+writeLines(as.character(demo_docs[[sample(1:nrow(demo_corpus.list), 1)]]))
+
+#Strip digits
+repub_docs <- tm_map(demo_docs, removeNumbers)
+writeLines(as.character(demo_docs[[sample(1:nrow(demo_corpus.list), 1)]]))
+
+#remove stopwords
+demo_docs <- tm_map(demo_docs, removeWords, stopwords("english"))
+writeLines(as.character(demo_docs[[sample(1:nrow(demo_corpus.list), 1)]]))
+
+#remove whitespace
+demo_docs <- tm_map(demo_docs, stripWhitespace)
+writeLines(as.character(demo_docs[[sample(1:nrow(demo_corpus.list), 1)]]))
+
+#Stem document
+demo_docs <- tm_map(demo_docs,stemDocument)
+writeLines(as.character(demo_docs[[sample(1:nrow(demo_corpus.list), 1)]]))
+```
+#Step 6 - topic modelling for Democratic corpus
+Gengerate document-term matrices. 
+
+```{r}
+dtm <- DocumentTermMatrix(demo_docs)
+#convert rownames to filenames#convert rownames to filenames
+rownames(dtm) <- paste(demo_corpus.list$type, demo_corpus.list$File,
+                       demo_corpus.list$Term, demo_corpus.list$sent.id, sep="_")
+
+rowTotals <- apply(dtm , 1, sum) #Find the sum of words in each Document
+
+dtm  <- dtm[rowTotals> 0, ]
+demo_corpus.list=demo_corpus.list[rowTotals>0, ]
+```
+
+Run LDA
+
+```{r}
+#Set parameters for Gibbs sampling
+burnin <- 4000
+iter <- 2000
+thin <- 500
+seed <-list(2003,5,63,100001,765)
+nstart <- 5
+best <- TRUE
+
+#Number of topics
+k <- 5
+
+#Run LDA using Gibbs sampling
+ldaOut <-LDA(dtm, k, method="Gibbs", control=list(nstart = nstart, 
+                                                 seed = seed, best = best,
+                                                 burnin = burnin, iter = iter, 
+                                                 thin=thin))
+#write out results
+#docs to topics
+ldaOut.topics <- as.matrix(topics(ldaOut))
+table(c(1:k, ldaOut.topics))
+write.csv(ldaOut.topics,file=paste("/Users/xuansijian/LDAGibbs","DEM",k,"DocsToTopics.csv"))
+
+#top 6 terms in each topic
+ldaOut.terms <- as.matrix(terms(ldaOut,20))
+write.csv(ldaOut.terms,file=paste("/Users/xuansijian/LDAGibbs","DEM",k,"TopicsToTerms.csv"))
+
+#probabilities associated with each topic assignment
+topicProbabilities <- as.data.frame(ldaOut@gamma)
+write.csv(topicProbabilities,file=paste("/Users/xuansijian/LDAGibbs","DEM",k,"TopicProbabilities.csv"))
+
+
+terms.beta=ldaOut@beta
+terms.beta=scale(terms.beta)
+topics.terms=NULL
+for(i in 1:k){
+  topics.terms=rbind(topics.terms, ldaOut@terms[order(terms.beta[i,], decreasing = TRUE)[1:7]])
+}
+topics.terms
+ldaOut.terms
+```
+#Step 7 - make wordcloud for both parties
+```{r}
+tdm.all<-TermDocumentMatrix(demo_docs)
+tdm.tidy=tidy(tdm.all)
+tdm.overall=summarise(group_by(tdm.tidy, term), sum(count))
+wordcloud(tdm.overall$term, tdm.overall$`sum(count)`,
+          scale=c(5,0.5),
+          max.words=100,
+          min.freq=1,
+          random.order=FALSE,
+          rot.per=0.3,
+          use.r.layout=T,
+          random.color=FALSE,
+          colors=brewer.pal(9,"Blues"))
+```
+
+```{r}
+tdm.all<-TermDocumentMatrix(repub_docs)
+tdm.tidy=tidy(tdm.all)
+tdm.overall=summarise(group_by(tdm.tidy, term), sum(count))
+wordcloud(tdm.overall$term, tdm.overall$`sum(count)`,
+          scale=c(5,0.5),
+          max.words=100,
+          min.freq=1,
+          random.order=FALSE,
+          rot.per=0.3,
+          use.r.layout=T,
+          random.color=FALSE,
+          colors=brewer.pal(9,"Blues"))
+```
