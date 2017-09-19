@@ -9,11 +9,16 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-<font color=red size=5># Step 0: check and install needed packages. Load the libraries and functions.    
-   
+# Step 0: check and install needed packages. Load the libraries and functions. 
+
 ```{r, message=FALSE, warning=FALSE}
 
-packages.used=c("qdap", "tm","topicmodels", "wordcloud", "RColorBrewer", "dplyr", "tidytext")
+packages.used=c("rvest", "tibble", "qdap", 
+                "sentimentr", "gplots", "dplyr",
+                "tm", "syuzhet", "factoextra", 
+                "beeswarm", "scales", "RColorBrewer",
+                "RANN", "tm", "topicmodels", "tm", "wordcloud", "RColorBrewer", 
+                "dplyr", "tidytext")
 
 # check packages that need to be installed.
 packages.needed=setdiff(packages.used, 
@@ -25,46 +30,53 @@ if(length(packages.needed)>0){
 }
 
 # load packages
+library("rvest")
+library("tibble")
 library("qdap")
+library("sentimentr")
+library("gplots")
 library("dplyr")
 library("tm")
-library("topicmodels")
-library("wordcloud")
+library("syuzhet")
+library("factoextra")
+library("beeswarm")
+library("scales")
 library("RColorBrewer")
-library("tidytext")
+library("RANN")
+library("tm")
+library("topicmodels")
 
+library(wordcloud)
+library(RColorBrewer)
+library(tidytext)
+
+source("/Users/xuansijian/Desktop/wk2-TextMining/lib/plotstacked.R")
+source("/Users/xuansijian/Desktop/wk2-TextMining/lib/speechFuncs.R")
 ```
-<font color=black size=3>This notebook was prepared with the following environmental settings.
+This notebook was prepared with the following environmental settings.
 
 ```{r}
 print(R.version)
 ```
-<font color=red size=5># Step 1 - Read in the speeches and make the sentence list
+# Step 1 - Read in the speeches
 ```{r, warning=FALSE}
 folder.path="/Users/xuansijian/Documents/GitHub/fall2017-project1-sxuan2/data/InauguralSpeeches"
 speeches=list.files(path = folder.path, pattern = "*.txt")
-speeches=paste("/Users/xuansijian/Documents/GitHub/fall2017-project1-sxuan2/data/InauguralSpeeches/", speeches, sep = "")
 speech.list=read.csv("/Users/xuansijian/Documents/GitHub/fall2017-project1-sxuan2/data/InaugurationInfo.csv")
-speech.date = read.table("/Users/xuansijian/Documents/GitHub/fall2017-project1-sxuan2/data/InauguationDates.txt",sep = "\t", header = TRUE)
 
-speech.list$index = 1:58
 speech.list$fulltext=NA
 text = NULL
-for(i in 1:58){
+for(i in 1:length(speeches)){
   text[i] = readLines(speeches[i])
 }
-
 speech.list = speech.list[order(speech.list$President),]
 rownames(speech.list)= 1:58
 speech.list$fulltext <- text
-speech.list = speech.list[order(speech.list$index),]
-rownames(speech.list)= 1:58
-```
-<font color=red size=5>#Step 2 - Count the words in every sentence
-```{r,warning = FALSE}
-sentence.list = NULL
+
+
+sentence.list=NULL
 for(i in 1:nrow(speech.list)){
-  sentences = sent_detect(speech.list$fulltext[i],
+  sentences=sent_detect(speech.list$fulltext[i],
                         endmarks = c("?", ".", "!", "|",";"))
   if(length(sentences)>0){
     word.count=word_count(sentences)
@@ -80,54 +92,14 @@ for(i in 1:nrow(speech.list)){
   }
 }
 ```
-<font color=red size=5>#Step 3 - Create Republican and Democracy vectors
+#Step 2 - create Republican and Democracy vectors
 ```{r}
 Republican_sentence.list = sentence.list[sentence.list$Party == "Republican",]
 Democracy_sentence.list = sentence.list[sentence.list$Party == "Democratic",]
 Republican_sentence.list = na.exclude(Republican_sentence.list)
 Democracy_sentence.list = na.exclude(Democracy_sentence.list)
 ```
-<font color=red size=5>#Step 4 - Sort the word count of a single sentence
-```{r}
-word_count_colum_1 = NULL
-word_count_column_1 = sentence.list[order(sentence.list$word.count, decreasing = TRUE),]# to see who use longer sentences
-head(word_count_column_1$President,n = 10)
-
-```
-<font color=black size=3>We can see William Henry Harrison and John Adams are presidents who have a special love in using longer sentences.   
-
-<font color=red size=5>#Step 5 - Sort the length of inauguration speeches by words
-```{r}
-speech_length_sort = NULL
-speech.list$Words = as.numeric(as.character(speech.list$Words))
-speech_length_sort = speech.list[order(speech.list$Words, decreasing = TRUE),]
-head(speech_length_sort$President, n = 10)
-
-
-df = speech_length_sort[order(speech_length_sort$President), ]
-unique_president = unique(speech_length_sort$President)
-speechdiff = data.frame(data = NA)
-for(i in 1:length(unique_president)){
-  subdf = df[df$President == unique_president[i], ]
-  subdf = subdf[order(subdf$index), ]
-  if(nrow(subdf) > 1){
-    speechdiff[i,1] = as.character(unique(subdf$President))
-    speechdiff[i,2] = subdf$Words[2]- subdf$Words[1]
-  }
-}
-speechdiff = na.omit(speechdiff)
-```
-```{r}
-plot(1:nrow(speechdiff),speechdiff$V2,type = "l",xlab = "time", ylab = "wordsdiff")
-for (i in 1:nrow(speechdiff)){
-  text(x = i,y = speechdiff$V2[i],label = speechdiff$data[i])
-}
-abline(h = 0)
-```
-   
-<font color=black size=3>We can see William Henry Harrison writes the longest inauguration speech in US history; part of reason should be the long sentences he used. Most of the presidents have similar length in term 1 speech and term 2 speech if they achieved a reappointment. However, James Monroe has much more to say in his 2nd term speech; Ablaham Lincoln, William McKinley and George Washington do not have much to talk about, in cantrast.
-
-<font color=red size=5>#Step 6 - Create corpus for Republican, text mining, and text processing
+#Step 3 - create corpus for Republican, text mining, and text processing
 ```{r}
 repub_corpus.list=Republican_sentence.list[2:(nrow(Republican_sentence.list)-1), ]
 sentence.pre=Republican_sentence.list$sentences[1:(nrow(Republican_sentence.list)-2)]
@@ -140,22 +112,34 @@ repub_corpus.list=repub_corpus.list[-rm.rows, ]
 repub_docs <- Corpus(VectorSource(repub_corpus.list$snipets))
 writeLines(as.character(repub_docs[[sample(1:nrow(repub_corpus.list), 1)]]))
 
+
 #remove potentially problematic symbols
 repub_docs <-tm_map(repub_docs,content_transformer(tolower))
+writeLines(as.character(repub_docs[[sample(1:nrow(repub_corpus.list), 1)]]))
+
 #remove punctuation
 repub_docs <- tm_map(repub_docs, removePunctuation)
+writeLines(as.character(repub_docs[[sample(1:nrow(repub_corpus.list), 1)]]))
+
 #Strip digits
 repub_docs <- tm_map(repub_docs, removeNumbers)
+writeLines(as.character(repub_docs[[sample(1:nrow(repub_corpus.list), 1)]]))
+
 #remove stopwords
 repub_docs <- tm_map(repub_docs, removeWords, stopwords("english"))
+writeLines(as.character(repub_docs[[sample(1:nrow(repub_corpus.list), 1)]]))
+
 #remove whitespace
 repub_docs <- tm_map(repub_docs, stripWhitespace)
+writeLines(as.character(repub_docs[[sample(1:nrow(repub_corpus.list), 1)]]))
+
 #Stem document
 repub_docs <- tm_map(repub_docs,stemDocument)
 writeLines(as.character(repub_docs[[sample(1:nrow(repub_corpus.list), 1)]]))
 ```
-<font color=red size=5>#Step 7 - topic modelling for Republican corpus   
-<font color=black size=3>We gengerate document-term matrices first
+#Step 4 - topic modelling for Republican corpus
+Gengerate document-term matrices. 
+
 ```{r}
 dtm <- DocumentTermMatrix(repub_docs)
 #convert rownames to filenames#convert rownames to filenames
@@ -166,8 +150,11 @@ rowTotals <- apply(dtm , 1, sum) #Find the sum of words in each Document
 
 dtm  <- dtm[rowTotals> 0, ]
 repub_corpus.list=repub_corpus.list[rowTotals>0, ]
+
 ```
-<font color=black size=3>Run LDA
+
+Run LDA
+
 ```{r}
 #Set parameters for Gibbs sampling
 burnin <- 4000
@@ -176,20 +163,23 @@ thin <- 500
 seed <-list(2003,5,63,100001,765)
 nstart <- 5
 best <- TRUE
+
 #Number of topics
 k <- 5
+
 #Run LDA using Gibbs sampling
 ldaOut <-LDA(dtm, k, method="Gibbs", control=list(nstart = nstart, 
                                                  seed = seed, best = best,
                                                  burnin = burnin, iter = iter, 
                                                  thin=thin))
+#write out results
 #docs to topics
 ldaOut.topics <- as.matrix(topics(ldaOut))
 table(c(1:k, ldaOut.topics))
 write.csv(ldaOut.topics,file=paste("/Users/xuansijian/LDAGibbs","REP",k,"DocsToTopics.csv"))
 
 #top 6 terms in each topic
-ldaOut.terms <- as.matrix(terms(ldaOut,6))
+ldaOut.terms <- as.matrix(terms(ldaOut,20))
 write.csv(ldaOut.terms,file=paste("/Users/xuansijian/LDAGibbs","REP",k,"TopicsToTerms.csv"))
 
 #probabilities associated with each topic assignment
@@ -206,8 +196,7 @@ for(i in 1:k){
 topics.terms
 ldaOut.terms
 ```
-<font color=black size=3> We can see that Republican party has its own advocation on holding traditional and conservative opinions. I regard Topic 1 as about "national security". Topic 2 seems like to be about "government." Topic 3 is about "work". There's not much thing useful in Topic 4 since there are 3 modal verbs, I can see "people" or "humanity" from Topic 4. Topic 5 looks like about "law". Indeed, the topics are really like what traditionalists and paleoconservatives want.   
-<font color=red size=5>#Step 8 - Create corpus for Democratic, text mining, and text processing
+#Step 5 - create corpus for Democratic, text mining, and text processing
 ```{r}
 demo_corpus.list=Democracy_sentence.list[2:(nrow(Democracy_sentence.list)-1), ]
 sentence.pre=Democracy_sentence.list$sentences[1:(nrow(Democracy_sentence.list)-2)]
@@ -218,21 +207,36 @@ rm.rows=c(rm.rows, rm.rows-1)
 demo_corpus.list=demo_corpus.list[-rm.rows, ]
 
 demo_docs <- Corpus(VectorSource(demo_corpus.list$snipets))
+writeLines(as.character(demo_docs[[sample(1:nrow(demo_corpus.list), 1)]]))
+
+
 #remove potentially problematic symbols
 demo_docs <-tm_map(demo_docs,content_transformer(tolower))
+writeLines(as.character(demo_docs[[sample(1:nrow(demo_corpus.list), 1)]]))
+
 #remove punctuation
 demo_docs <- tm_map(demo_docs, removePunctuation)
+writeLines(as.character(demo_docs[[sample(1:nrow(demo_corpus.list), 1)]]))
+
 #Strip digits
 repub_docs <- tm_map(demo_docs, removeNumbers)
+writeLines(as.character(demo_docs[[sample(1:nrow(demo_corpus.list), 1)]]))
+
 #remove stopwords
 demo_docs <- tm_map(demo_docs, removeWords, stopwords("english"))
+writeLines(as.character(demo_docs[[sample(1:nrow(demo_corpus.list), 1)]]))
+
 #remove whitespace
 demo_docs <- tm_map(demo_docs, stripWhitespace)
+writeLines(as.character(demo_docs[[sample(1:nrow(demo_corpus.list), 1)]]))
+
 #Stem document
 demo_docs <- tm_map(demo_docs,stemDocument)
 writeLines(as.character(demo_docs[[sample(1:nrow(demo_corpus.list), 1)]]))
 ```
-<font color=red size=5>#Step 9 - topic modelling for Democratic corpus
+#Step 6 - topic modelling for Democratic corpus
+Gengerate document-term matrices. 
+
 ```{r}
 dtm <- DocumentTermMatrix(demo_docs)
 #convert rownames to filenames#convert rownames to filenames
@@ -244,7 +248,9 @@ rowTotals <- apply(dtm , 1, sum) #Find the sum of words in each Document
 dtm  <- dtm[rowTotals> 0, ]
 demo_corpus.list=demo_corpus.list[rowTotals>0, ]
 ```
-<font color=black size=3>Run LDA
+
+Run LDA
+
 ```{r}
 #Set parameters for Gibbs sampling
 burnin <- 4000
@@ -253,20 +259,23 @@ thin <- 500
 seed <-list(2003,5,63,100001,765)
 nstart <- 5
 best <- TRUE
+
 #Number of topics
 k <- 5
+
 #Run LDA using Gibbs sampling
 ldaOut <-LDA(dtm, k, method="Gibbs", control=list(nstart = nstart, 
                                                  seed = seed, best = best,
                                                  burnin = burnin, iter = iter, 
                                                  thin=thin))
+#write out results
 #docs to topics
 ldaOut.topics <- as.matrix(topics(ldaOut))
 table(c(1:k, ldaOut.topics))
 write.csv(ldaOut.topics,file=paste("/Users/xuansijian/LDAGibbs","DEM",k,"DocsToTopics.csv"))
 
 #top 6 terms in each topic
-ldaOut.terms <- as.matrix(terms(ldaOut,6))
+ldaOut.terms <- as.matrix(terms(ldaOut,20))
 write.csv(ldaOut.terms,file=paste("/Users/xuansijian/LDAGibbs","DEM",k,"TopicsToTerms.csv"))
 
 #probabilities associated with each topic assignment
@@ -283,4 +292,33 @@ for(i in 1:k){
 topics.terms
 ldaOut.terms
 ```
-<font color=black size=3>We can see Democratics are holding slightly different opinions from Republicans. Democratics also talk about "government","security" and "humanity"(I see it from Topic 5, Topic 4 and Topic 1). The difference is at they talks more about "future"(Topic 2), "new rules"(Topic 3), "subsidies"(from "every" in Topic 2) and so on. We can see that Democratics are kind of "liberalism" and "left", while Republicans are kind of "right".
+#Step 7 - make wordcloud for both parties
+```{r}
+tdm.all<-TermDocumentMatrix(demo_docs)
+tdm.tidy=tidy(tdm.all)
+tdm.overall=summarise(group_by(tdm.tidy, term), sum(count))
+wordcloud(tdm.overall$term, tdm.overall$`sum(count)`,
+          scale=c(5,0.5),
+          max.words=100,
+          min.freq=1,
+          random.order=FALSE,
+          rot.per=0.3,
+          use.r.layout=T,
+          random.color=FALSE,
+          colors=brewer.pal(9,"Blues"))
+```
+
+```{r}
+tdm.all<-TermDocumentMatrix(repub_docs)
+tdm.tidy=tidy(tdm.all)
+tdm.overall=summarise(group_by(tdm.tidy, term), sum(count))
+wordcloud(tdm.overall$term, tdm.overall$`sum(count)`,
+          scale=c(5,0.5),
+          max.words=100,
+          min.freq=1,
+          random.order=FALSE,
+          rot.per=0.3,
+          use.r.layout=T,
+          random.color=FALSE,
+          colors=brewer.pal(9,"Blues"))
+```
