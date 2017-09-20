@@ -2,7 +2,9 @@
 title: "project_1"
 author: "Sijian Xuan sx2195"
 date: "September 15, 2017"
-output: html_document
+output:
+  html_document: default
+  pdf_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -41,11 +43,11 @@ print(R.version)
 ```
 <font color=red size=5># Step 1 - Read in the speeches and make the sentence list
 ```{r, warning=FALSE}
-folder.path="/Users/xuansijian/Documents/GitHub/fall2017-project1-sxuan2/data/InauguralSpeeches"
+folder.path="C:/Users/sijian/Desktop/fall2017-project1-sxuan2/fall2017-project1-sxuan2/data/InauguralSpeeches"
 speeches=list.files(path = folder.path, pattern = "*.txt")
-speeches=paste("/Users/xuansijian/Documents/GitHub/fall2017-project1-sxuan2/data/InauguralSpeeches/", speeches, sep = "")
-speech.list=read.csv("/Users/xuansijian/Documents/GitHub/fall2017-project1-sxuan2/data/InaugurationInfo.csv")
-speech.date = read.table("/Users/xuansijian/Documents/GitHub/fall2017-project1-sxuan2/data/InauguationDates.txt",sep = "\t", header = TRUE)
+speeches=paste("C:/Users/sijian/Desktop/fall2017-project1-sxuan2/fall2017-project1-sxuan2/data/InauguralSpeeches/", speeches, sep = "")
+speech.list=read.csv("C:/Users/sijian/Desktop/fall2017-project1-sxuan2/fall2017-project1-sxuan2/data/InaugurationInfo.csv")
+speech.date = read.table("C:/Users/sijian/Desktop/fall2017-project1-sxuan2/fall2017-project1-sxuan2/data/InauguationDates.txt",sep = "\t", header = TRUE)
 
 speech.list$index = 1:58
 speech.list$fulltext=NA
@@ -186,15 +188,15 @@ ldaOut <-LDA(dtm, k, method="Gibbs", control=list(nstart = nstart,
 #docs to topics
 ldaOut.topics <- as.matrix(topics(ldaOut))
 table(c(1:k, ldaOut.topics))
-write.csv(ldaOut.topics,file=paste("/Users/xuansijian/LDAGibbs","REP",k,"DocsToTopics.csv"))
+write.csv(ldaOut.topics,file=paste("C:/Users/sijian/Desktop/LDAGibbs","REP",k,"DocsToTopics.csv"))
 
 #top 6 terms in each topic
 ldaOut.terms <- as.matrix(terms(ldaOut,6))
-write.csv(ldaOut.terms,file=paste("/Users/xuansijian/LDAGibbs","REP",k,"TopicsToTerms.csv"))
+write.csv(ldaOut.terms,file=paste("C:/Users/sijian/Desktop/LDAGibbs","REP",k,"TopicsToTerms.csv"))
 
 #probabilities associated with each topic assignment
 topicProbabilities <- as.data.frame(ldaOut@gamma)
-write.csv(topicProbabilities,file=paste("/Users/xuansijian/LDAGibbs","REP",k,"TopicProbabilities.csv"))
+write.csv(topicProbabilities,file=paste("C:/Users/sijian/Desktop/LDAGibbs","REP",k,"TopicProbabilities.csv"))
 
 
 terms.beta=ldaOut@beta
@@ -206,7 +208,7 @@ for(i in 1:k){
 topics.terms
 ldaOut.terms
 ```
-<font color=black size=3> We can see that Republican party has its own advocation on holding traditional and conservative opinions. I regard Topic 1 as about "national security". Topic 2 seems like to be about "government." Topic 3 is about "work". There's not much thing useful in Topic 4 since there are 3 modal verbs, I can see "people" or "humanity" from Topic 4. Topic 5 looks like about "law". Indeed, the topics are really like what traditionalists and paleoconservatives want.   
+<font color=black size=3> We can see that Republican party has its own advocation on holding traditional and conservative opinions. I regard Topic 1 as about "national security". Topic 2 seems like to be about "government." Topic 3 is about "work". There's not much thing useful in Topic 4 since there are 3 modal verbs, I can see "people" or "humanity" from Topic 4. Topic 5 looks like about "law". Indeed, the topics are really like what traditionalists and paleoconservatives want.     
 <font color=red size=5>#Step 8 - Create corpus for Democratic, text mining, and text processing
 ```{r}
 demo_corpus.list=Democracy_sentence.list[2:(nrow(Democracy_sentence.list)-1), ]
@@ -263,16 +265,15 @@ ldaOut <-LDA(dtm, k, method="Gibbs", control=list(nstart = nstart,
 #docs to topics
 ldaOut.topics <- as.matrix(topics(ldaOut))
 table(c(1:k, ldaOut.topics))
-write.csv(ldaOut.topics,file=paste("/Users/xuansijian/LDAGibbs","DEM",k,"DocsToTopics.csv"))
+write.csv(ldaOut.topics,file=paste("C:/Users/sijian/Desktop/LDAGibbs","DEM",k,"DocsToTopics.csv"))
 
 #top 6 terms in each topic
 ldaOut.terms <- as.matrix(terms(ldaOut,6))
-write.csv(ldaOut.terms,file=paste("/Users/xuansijian/LDAGibbs","DEM",k,"TopicsToTerms.csv"))
+write.csv(ldaOut.terms,file=paste("C:/Users/sijian/Desktop/LDAGibbs","DEM",k,"TopicsToTerms.csv"))
 
 #probabilities associated with each topic assignment
 topicProbabilities <- as.data.frame(ldaOut@gamma)
-write.csv(topicProbabilities,file=paste("/Users/xuansijian/LDAGibbs","DEM",k,"TopicProbabilities.csv"))
-
+write.csv(topicProbabilities,file=paste("C:/Users/sijian/Desktop/LDAGibbs","DEM",k,"TopicProbabilities.csv"))
 
 terms.beta=ldaOut@beta
 terms.beta=scale(terms.beta)
